@@ -1,31 +1,4 @@
-/*
-    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
-
-    This file is part of libzmq, the ZeroMQ core engine in C++.
-
-    libzmq is free software; you can redistribute it and/or modify it under
-    the terms of the GNU Lesser General Public License (LGPL) as published
-    by the Free Software Foundation; either version 3 of the License, or
-    (at your option) any later version.
-
-    As a special exception, the Contributors give you permission to link
-    this library with independent modules to produce an executable,
-    regardless of the license terms of these independent modules, and to
-    copy and distribute the resulting executable under terms of your choice,
-    provided that you also meet, for each linked independent module, the
-    terms and conditions of the license of that module. An independent
-    module is a module which is not derived from or based on this library.
-    If you modify this library, you must extend this exception to your
-    version of the library.
-
-    libzmq is distributed in the hope that it will be useful, but WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-    FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
-    License for more details.
-
-    You should have received a copy of the GNU Lesser General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+/* SPDX-License-Identifier: MPL-2.0 */
 
 #include "precompiled.hpp"
 #include "clock.hpp"
@@ -195,6 +168,7 @@ uint64_t zmq::clock_t::now_us ()
 
 #else
 
+    LIBZMQ_UNUSED (nsecs_per_usec);
     //  Use POSIX gettimeofday function to get precise time.
     struct timeval tv;
     int rc = gettimeofday (&tv, NULL);
@@ -243,14 +217,19 @@ uint64_t zmq::clock_t::rdtsc ()
 #elif defined(_MSC_VER) && defined(_M_ARM)   // NC => added for windows ARM
     return __rdpmccntr64 ();
 #elif defined(_MSC_VER) && defined(_M_ARM64) // NC => added for windows ARM64
-    //return __rdpmccntr64 ();
-    //return __rdtscp (nullptr);
-    // todo: find proper implementation for ARM64
-    static uint64_t snCounter = 0;
-    return ++snCounter;
+    const int64_t pmccntr_el0 = (((3 & 1) << 14) |  // op0
+                                 ((3 & 7) << 11) |  // op1
+                                 ((9 & 15) << 7) |  // crn
+                                 ((13 & 15) << 3) | // crm
+                                 ((0 & 7) << 0));   // op2
+    return _ReadStatusReg (pmccntr_el0);
+#elif (defined(_WIN32) && defined(__GNUC__) && defined(__aarch64__))
+    uint64_t val;
+    __asm__ volatile ("mrs %0, pmccntr_el0" : "=r"(val));
+    return val;
 #elif (defined __GNUC__ && (defined __i386__ || defined __x86_64__))
     uint32_t low, high;
-    __asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
+    __asm__ volatile ("rdtsc" : "=a"(low), "=d"(high));
     return static_cast<uint64_t> (high) << 32 | low;
 #elif (defined __SUNPRO_CC && (__SUNPRO_CC >= 0x5100)                          \
        && (defined __i386 || defined __amd64 || defined __x86_64))
@@ -259,11 +238,11 @@ uint64_t zmq::clock_t::rdtsc ()
         uint64_t u64val;
         uint32_t u32val[2];
     } tsc;
-    asm("rdtsc" : "=a"(tsc.u32val[0]), "=d"(tsc.u32val[1]));
+    asm ("rdtsc" : "=a"(tsc.u32val[0]), "=d"(tsc.u32val[1]));
     return tsc.u64val;
 #elif defined(__s390__)
     uint64_t tsc;
-    asm("\tstck\t%0\n" : "=Q"(tsc) : : "cc");
+    asm ("\tstck\t%0\n" : "=Q"(tsc) : : "cc");
     return tsc;
 #else
     struct timespec ts;
